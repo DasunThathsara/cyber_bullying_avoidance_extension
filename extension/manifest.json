@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Parental Control Universal Blocker",
-  "version": "1.2",
+  "version": "2.0",
   "description": "Prevents sending and searching for inappropriate text on all websites and the URL bar.",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
   "host_permissions": [
     "http://127.0.0.1:8000/*"
@@ -21,7 +22,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["blocked.html"],
+      "resources": ["interstitial.html", "interstitial.js"],
       "matches": ["<all_urls>"]
     }
   ]

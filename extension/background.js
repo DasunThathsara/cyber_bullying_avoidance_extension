@@ -1,44 +1,27 @@
-console.log("Parental Control Background Script Loaded.");
+console.log("Parental Control Background Script v2 Loaded.");
 
-async function checkSearchQuery(query) {
-    if (!query) return false;
-    try {
-        const response = await fetch('http://127.0.0.1:8000/check-sentence/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sentence: query }),
-        });
-        const data = await response.json();
-        return data.result === 'BAD';
-    } catch (error) {
-        console.error('Parental Control API Error:', error);
-        return false;
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+    if (details.frameId !== 0) {
+        return;
     }
-}
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (changeInfo.url) {
-        try {
-            const url = new URL(changeInfo.url);
-            let searchQuery = null;
+    const url = new URL(details.url);
+    let searchQuery = null;
 
-            if (url.hostname.includes('google.') || url.hostname.includes('bing.com') || url.hostname.includes('duckduckgo.com') || url.hostname.includes('youtube.com')) {
-                searchQuery = url.searchParams.get('q') || url.searchParams.get('search_query');
-            } else if (url.hostname.includes('yahoo.com')) {
-                searchQuery = url.searchParams.get('p');
-            }
-
-            if (searchQuery) {
-                console.log(`Detected search query: ${searchQuery}`);
-                const isBad = await checkSearchQuery(searchQuery);
-                if (isBad) {
-                    console.log(`Blocking bad search: ${searchQuery}`);
-                    chrome.tabs.update(tabId, {
-                        url: chrome.runtime.getURL('blocked.html')
-                    });
-                }
-            }
-        } catch (error) {
-        }
+    if (url.hostname.includes('google.') || url.hostname.includes('bing.com') || url.hostname.includes('duckduckgo.com') || url.hostname.includes('youtube.com')) {
+        searchQuery = url.searchParams.get('q') || url.searchParams.get('search_query');
+    } else if (url.hostname.includes('yahoo.com')) {
+        searchQuery = url.searchParams.get('p');
     }
+
+    if (searchQuery) {
+        console.log(`Intercepting search for: ${searchQuery}`);
+        const interstitialUrl = chrome.runtime.getURL(
+            `interstitial.html?url=${encodeURIComponent(details.url)}`
+        );
+
+        chrome.tabs.update(details.tabId, { url: interstitialUrl });
+    }
+}, {
+    url: [{ hostContains: 'google' }, { hostContains: 'bing' }, { hostContains: 'yahoo' }, { hostContains: 'duckduckgo' }, { hostContains: 'youtube' }]
 });

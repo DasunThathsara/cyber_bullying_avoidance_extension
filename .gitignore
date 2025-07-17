@@ -1,0 +1,5 @@
+./model/.env
+/.env
+model/.env
+*/.env
+.env
