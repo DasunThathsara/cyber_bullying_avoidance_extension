@@ -41,16 +41,13 @@ def count_bad_words(sentence: str, bad_words: list) -> int:
 
 def predict_sentence(sentence: str):
     """Predicts if a single sentence is bad or not using the loaded components."""
-    # Create features for the new sentence
     bad_word_count = count_bad_words(sentence, bad_words_list)
     tfidf_features = tfidf_vectorizer.transform([sentence])
     combined_features = hstack([tfidf_features, np.array([[bad_word_count]])])
 
-    # Make a prediction
     prediction = model.predict(combined_features)
     prediction_proba = model.predict_proba(combined_features)
 
-    # Return the result
     if prediction[0] == 1:
         return {
             "result": "BAD",
@@ -74,6 +71,3 @@ def check_sentence(sentence_input: SentenceInput):
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Parental Control API. Go to /docs to see the API documentation."}
-
-# To run this API, save it as `api.py` and run the following command in your terminal:
-# uvicorn api:app --reload

@@ -1,4 +1,3 @@
-// This script checks searches from the browser's main URL bar
 console.log("Parental Control Background Script Loaded.");
 
 async function checkSearchQuery(query) {
@@ -13,19 +12,16 @@ async function checkSearchQuery(query) {
         return data.result === 'BAD';
     } catch (error) {
         console.error('Parental Control API Error:', error);
-        return false; // Fail-safe
+        return false;
     }
 }
 
-// Listen for when a tab is updated (e.g., navigation)
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    // We only care when the URL changes, to avoid running on every small update
     if (changeInfo.url) {
         try {
             const url = new URL(changeInfo.url);
             let searchQuery = null;
 
-            // Extract search query from common search engines (add more if needed)
             if (url.hostname.includes('google.') || url.hostname.includes('bing.com') || url.hostname.includes('duckduckgo.com') || url.hostname.includes('youtube.com')) {
                 searchQuery = url.searchParams.get('q') || url.searchParams.get('search_query');
             } else if (url.hostname.includes('yahoo.com')) {
@@ -37,14 +33,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
                 const isBad = await checkSearchQuery(searchQuery);
                 if (isBad) {
                     console.log(`Blocking bad search: ${searchQuery}`);
-                    // Redirect the tab to our local "blocked" page
                     chrome.tabs.update(tabId, {
                         url: chrome.runtime.getURL('blocked.html')
                     });
                 }
             }
         } catch (error) {
-            // This can happen for non-standard URLs like "chrome://...". Just ignore them.
         }
     }
 });

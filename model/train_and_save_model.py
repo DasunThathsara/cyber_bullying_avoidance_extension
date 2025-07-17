@@ -69,14 +69,10 @@ print(classification_report(y_test, y_pred))
 
 
 # --- 5. Save the Model and Vectorizer ---
-# Create a directory to save the models if it doesn't exist
 os.makedirs('saved_model', exist_ok=True)
 
-# Save the trained model
 joblib.dump(model, 'saved_model/model.pkl')
-# Save the fitted vectorizer
 joblib.dump(tfidf_vectorizer, 'saved_model/vectorizer.pkl')
-# Save the bad words list
 joblib.dump(bad_words_list, 'saved_model/bad_words.pkl')
 
 print("\n--- Model and components saved successfully! ---")
