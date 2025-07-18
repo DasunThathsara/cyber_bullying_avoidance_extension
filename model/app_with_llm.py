@@ -1,6 +1,6 @@
 import os
 import json
-from openai import AzureOpenAI
+from openai import AzureOpenAI, APIError
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -35,7 +35,7 @@ except Exception as e:
 app = FastAPI(
     title="Parental Control API using LLM",
     description="An API to predict if a sentence is appropriate or not using Azure OpenAI.",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 # --- 3. Pydantic Model for Request Body ---
@@ -46,10 +46,11 @@ class SentenceInput(BaseModel):
 def get_llm_prediction(sentence: str):
     """
     Gets a prediction from Azure OpenAI to classify the sentence.
+    Handles content filter errors by classifying them as 'BAD'.
     """
     system_prompt = """
     You are a content moderation expert. Your task is to classify the given text as 'BAD' or 'NOT BAD'.
-    'BAD' means the text is inappropriate, offensive, hateful, or contains profanity. Actually I use this model to detect cyber bullying and I creating a parental control extension. Therefore, 'BAD' means the text is not appropriate for children. SSometimes user may pass a message like this 'I kill you' or 'I hate you'. These are not appropriate for children. Therefore give just bad or notbad thing. Don't include any additional information or context.
+    'BAD' means the text is inappropriate, offensive, hateful, or contains profanity. Actually I use this model to detect cyber bullying and I creating a parental control extension. Therefore, 'BAD' means the text is not appropriate for children. Sometimes user may pass a message like this 'I kill you' or 'I hate you'. These are not appropriate for children. Therefore give just bad or notbad thing. Don't include any additional information or context.
     'NOT BAD' means the text is appropriate and safe.
     You must also provide a confidence score as a percentage for your classification.
     Your final output must be a single, valid JSON object with two keys: "result" and "confidence".
@@ -63,21 +64,32 @@ def get_llm_prediction(sentence: str):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": sentence}
             ],
-            temperature=0, 
+            temperature=0,
             max_tokens=50,
             top_p=1,
             frequency_penalty=0,
             presence_penalty=0,
-            response_format={"type": "json_object"} 
+            response_format={"type": "json_object"}
         )
-        
+
         prediction_json = json.loads(response.choices[0].message.content)
         return prediction_json
+
+    except APIError as e:
+        # --- START: New logic to handle content filter errors ---
+        # Check if the error is specifically a content filter violation
+        if e.code == 'content_filter':
+            print(f"Content filter triggered for sentence: '{sentence}'. Classifying as BAD.")
+            return {"result": "BAD", "confidence": "100.00%"}
+        # If it's another type of API error, raise it as before
+        else:
+            raise HTTPException(status_code=500, detail=f"An API error occurred: {str(e)}")
+        # --- END: New logic ---
 
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="LLM returned a non-JSON response.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred with the Azure OpenAI service: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
 # --- 5. API Endpoint ---
@@ -89,7 +101,7 @@ def check_sentence(sentence_input: SentenceInput):
     """
     if not sentence_input.sentence.strip():
         raise HTTPException(status_code=400, detail="Sentence cannot be empty.")
-        
+
     return get_llm_prediction(sentence_input.sentence)
 
 # --- 6. Root Endpoint ---
