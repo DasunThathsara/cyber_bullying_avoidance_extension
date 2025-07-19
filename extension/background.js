@@ -1,10 +1,8 @@
-// This script checks searches FROM THE URL BAR and redirects to a blocked page if necessary.
 console.log("Parental Control Background Script v3.0 (LLM-powered) Loaded.");
 
 async function checkSearchQueryWithLLM(query) {
     if (!query) return false;
     try {
-        // Use the /check/llm/ endpoint for the final check
         const response = await fetch('http://127.0.0.1:8000/check/llm/', { // <-- CORRECT URL HERE
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -18,7 +16,6 @@ async function checkSearchQueryWithLLM(query) {
     }
 }
 
-// (The rest of the file remains the same)
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (changeInfo.url) {
         try {
