@@ -1,119 +1,114 @@
-console.log("Parental Control Script Loaded with Visual Feedback.");
+console.log("Parental Control Content Script v3.4 (Aggressive Redirect) Loaded.");
 
-// --- 1. Inject CSS for visual feedback ---
 const style = document.createElement('style');
 style.textContent = `
-  .parental-control-blocked-input {
-    border: 3px solid red !important;
-    box-shadow: 0 0 5px red !important;
-  }
+  .pc-checking-button { cursor: wait !important; }
 `;
 document.head.appendChild(style);
 
 
-// --- 2. The Core Logic (with minor changes to handle element state) ---
-const badInputState = {
-  element: null,
-  isBad: false,
-};
+const debouncedLocalCheck = debounce(checkTextWithLocalModel, 300);
 
-function debounce(func, delay) {
-    let timeout;
-    return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), delay);
-    };
-}
-
-async function checkTextWithAPI(element) {
+async function checkTextWithLocalModel(element) {
+    if (!element) return;
     const text = element.value || element.innerText;
-
-    if (badInputState.element) {
-        badInputState.element.classList.remove('parental-control-blocked-input');
-    }
-
-    if (!text || text.trim().length < 3) {
-        badInputState.isBad = false;
-        badInputState.element = null;
-        updateButtonStates();
-        return;
-    }
+    if (!text.trim()) return;
 
     try {
-        const response = await fetch('http://127.0.0.1:8000/check-sentence/', {
+        const response = await fetch('http://127.0.0.1:8000/check/local/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentence: text }),
         });
         const data = await response.json();
 
-        badInputState.isBad = (data.result === 'BAD');
-        badInputState.element = element;
-
-        if (badInputState.isBad) {
-            element.classList.add('parental-control-blocked-input');
-        } else {
-            element.classList.remove('parental-control-blocked-input');
+        if (data.result === 'BAD') {
+            console.log("Real-time check failed. Redirecting to blocked page.");
+            window.location.href = chrome.runtime.getURL('blocked.html');
         }
-
-        updateButtonStates();
-
-    } catch (error) {
-        console.error('Parental Control API Error:', error);
-        badInputState.isBad = false; 
-        updateButtonStates();
+    } catch (e) {
+        console.error("Local model API error:", e);
     }
 }
 
-function updateButtonStates() {
-    const buttons = document.querySelectorAll('button, input[type="submit"], [role="button"]');
-    const sendButtonSelectors = 'button, input[type="submit"], [role="button"], [data-icon="send"]';
-    const sendKeywords = ['send', 'post', 'reply', 'tweet', 'comment', 'save', 'share'];
+async function checkTextWithLLM(text) {
+    try {
+        const response = await fetch('http://127.0.0.1:8000/check/llm/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sentence: text }),
+        });
+        return await response.json();
+    } catch (e) {
+        console.error("LLM API error:", e);
+        return { result: "NOT BAD" };
+    }
+}
+
+
+async function handleSendClick(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const button = event.currentTarget;
+    const inputElement = document.activeElement;
+
+    if (!inputElement || (inputElement.tagName !== 'INPUT' && inputElement.tagName !== 'TEXTAREA' && !inputElement.isContentEditable)) {
+        return;
+    }
+
+    const text = inputElement.value || inputElement.innerText;
+    if (!text) return;
+
+    const originalButtonText = button.innerHTML;
+    button.textContent = 'Checking...';
+    button.classList.add('pc-checking-button');
+    button.disabled = true;
+
+    const llmResult = await checkTextWithLLM(text);
+
+    if (llmResult.result === 'BAD') {
+        button.textContent = 'Blocked';
+    } else {
+        button.disabled = false;
+        button.innerHTML = originalButtonText;
+        button.classList.remove('pc-checking-button');
+        button.removeEventListener('click', handleSendClick, true);
+        button.click();
+        button.addEventListener('click', handleSendClick, true);
+    }
+}
+
+
+function debounce(func, delay) {
+    let timeout;
+    return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), delay);
+    };
+}
+
+function attachListenersToPage() {
+    const sendButtonSelectors = 'button[type="submit"], [data-icon="send"], button[aria-label="Send"], div[role="button"][aria-label*="Send"]';
+
+    document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"]').forEach(input => {
+        if (!input.dataset.pcListenerAttached) {
+            input.addEventListener('input', () => debouncedLocalCheck(input));
+            input.dataset.pcListenerAttached = 'true';
+        }
+    });
 
     document.querySelectorAll(sendButtonSelectors).forEach(button => {
-        const buttonText = (button.innerText || button.value || "").toLowerCase();
-        const isSendButton = sendKeywords.some(keyword => buttonText.includes(keyword)) || button.matches('[data-icon="send"]');
-
-        if (isSendButton) {
-            button.disabled = badInputState.isBad;
-            button.style.opacity = badInputState.isBad ? '0.5' : '1';
-            button.style.cursor = badInputState.isBad ? 'not-allowed' : 'pointer';
+        if (!button.dataset.pcClickListenerAttached) {
+            button.addEventListener('click', handleSendClick, true);
+            button.dataset.pcClickListenerAttached = 'true';
         }
     });
 }
 
-const debouncedCheck = debounce(checkTextWithAPI, 500);
-
-function addListeners(element) {
-    element.addEventListener('input', (event) => {
-        debouncedCheck(event.target);
-    });
-
-    element.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && badInputState.isBad && event.target === badInputState.element && !event.shiftKey) {
-            console.log("Parental Control: 'Enter' key blocked inside webpage.");
-            event.preventDefault(); 
-        }
-    });
-}
-
-
-// --- 3. Attach Listeners to All Fields ---
-const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) { 
-                const fields = node.querySelectorAll('textarea, input[type="text"], [contenteditable="true"]');
-                fields.forEach(addListeners);
-
-                if (node.matches('textarea, input[type="text"], [contenteditable="true"]')) {
-                    addListeners(node);
-                }
-            }
-        });
-    });
+const observer = new MutationObserver(() => {
+    attachListenersToPage();
 });
-
 observer.observe(document.body, { childList: true, subtree: true });
 
-document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"]').forEach(addListeners);
+attachListenersToPage();

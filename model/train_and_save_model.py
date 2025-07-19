@@ -10,7 +10,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from scipy.sparse import hstack
 
-# --- 1. Load Your Actual Data Files ---
 try:
     labeled_df = pd.read_csv('data/parental_control_dataset.csv')
     bad_words_df = pd.read_csv('data/bad_words.csv', header=None)
@@ -25,14 +24,12 @@ except FileNotFoundError as e:
     print(f"Error: Missing file: {e.filename}. Make sure datasets are in the same directory.")
     exit()
 
-# Rename label column if necessary
 if 'label' in labeled_df.columns and 'is_bad' not in labeled_df.columns:
     labeled_df = labeled_df.rename(columns={'label': 'is_bad'})
 elif 'flag' in labeled_df.columns and 'is_bad' not in labeled_df.columns:
      labeled_df = labeled_df.rename(columns={'flag': 'is_bad'})
 
 
-# --- 2. Feature Engineering ---
 def count_bad_words(sentence, bad_words):
     if not isinstance(sentence, str): return 0
     count = 0
@@ -51,7 +48,6 @@ X_tfidf = tfidf_vectorizer.fit_transform(X_text)
 X_bad_word_count = labeled_df['bad_word_count'].values.reshape(-1, 1)
 X_combined = hstack([X_tfidf, X_bad_word_count])
 
-# --- 3. Model Training ---
 X_train, X_test, y_train, y_test = train_test_split(
     X_combined, y, test_size=0.2, random_state=42, stratify=y
 )
@@ -59,7 +55,6 @@ X_train, X_test, y_train, y_test = train_test_split(
 model = LogisticRegression(class_weight='balanced', solver='liblinear', random_state=42)
 model.fit(X_train, y_train)
 
-# --- 4. Model Evaluation (Optional but good practice) ---
 y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"\n--- Model Evaluation on Test Set ---")
@@ -68,7 +63,6 @@ print("Classification Report:")
 print(classification_report(y_test, y_pred))
 
 
-# --- 5. Save the Model and Vectorizer ---
 os.makedirs('saved_model', exist_ok=True)
 
 joblib.dump(model, 'saved_model/model.pkl')
