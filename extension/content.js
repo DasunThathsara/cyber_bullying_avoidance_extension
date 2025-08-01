@@ -1,4 +1,4 @@
-console.log("Parental Control Content Script v3.7 Loaded.");
+console.log("Parental Control Content Script v3.9 Loaded.");
 
 function debounce(fn, ms) {
   let timer;
@@ -8,10 +8,19 @@ function debounce(fn, ms) {
   };
 }
 
+function clearText(el) {
+  if ('value' in el) {
+    el.value = '';
+  } else if (el.isContentEditable) {
+    el.textContent = '';
+  }
+}
+
 async function isBadText(text) {
   if (!text.trim()) return false;
+  
   try {
-    const localRes = await fetch("http://127.0.0.1:8000/check/local/", {
+    const localRes = await fetch("http://127.0.0.1:8001/check/local/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sentence: text }),
@@ -21,9 +30,9 @@ async function isBadText(text) {
   } catch (err) {
     console.error("Local model error:", err);
   }
-  
+
   try {
-    const llmRes = await fetch("http://127.0.0.1:8000/check/llm/", {
+    const llmRes = await fetch("http://127.0.0.1:8001/check/llm/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sentence: text }),
@@ -33,38 +42,36 @@ async function isBadText(text) {
   } catch (err) {
     console.error("LLM model error:", err);
   }
+
   return false;
 }
 
-function findSendButton(input) {
-  let parent = input.parentElement;
-  while (parent) {
-    const btn = parent.querySelector(sendSelectors);
-    if (btn) return btn;
-    parent = parent.parentElement;
-  }
-  return null;
-}
+async function logAndBlock(blockedText, elementToClear) {
+    const data = await chrome.storage.local.get(['childUsername']);
+    const childUsername = data.childUsername;
 
-async function handleSendClick(event) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  const btn = event.currentTarget;
-  const active = document.activeElement;
-  const text = active.value || active.innerText || "";
-  if (!text) return;
-
-  const orig = btn.innerHTML;
-  btn.textContent = "Checking...";
-  btn.disabled = true;
-
-  if (await isBadText(text)) {
+    if (elementToClear) {
+        clearText(elementToClear);
+    }
+    
+    if (childUsername) {
+        try {
+            await fetch("http://127.0.0.1:8000/searches/log", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    search_query: blockedText,
+                    child_username: childUsername
+                }),
+            });
+        } catch (logError) {
+            console.error("Failed to log blocked search:", logError);
+        }
+    } else {
+        console.log("No child logged in. Blocking without logging.");
+    }
+    
     window.location.href = chrome.runtime.getURL("blocked.html");
-  } else {
-    btn.disabled = false;
-    btn.innerHTML = orig;
-    btn.click();
-  }
 }
 
 function attachListeners() {
@@ -73,58 +80,39 @@ function attachListeners() {
   );
 
   inputs.forEach((el) => {
-    if (!el.dataset.pcInput) {
-      const deb = debounce(async () => {
+    if (el.dataset.pcAttached) return;
+    el.dataset.pcAttached = "true";
+
+    const debouncedCheck = debounce(async () => {
+      const txt = el.value || el.innerText || "";
+      if (await isBadText(txt)) {
+        await logAndBlock(txt, el);
+      }
+    }, 400);
+    el.addEventListener("input", debouncedCheck);
+
+    el.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         const txt = el.value || el.innerText || "";
         if (await isBadText(txt)) {
-          window.location.href = chrome.runtime.getURL("blocked.html");
-        }
-      }, 300);
-      el.addEventListener("input", deb);
-      el.dataset.pcInput = "1";
-    }
-  });
-
-  const sendSelectors = [
-    'button[type="submit"]',
-    '[data-icon="send"]',
-    'button[aria-label="Send"]',
-    'div[role="button"][aria-label*="Send"]',
-  ].join(",");
-  document.querySelectorAll(sendSelectors).forEach((btn) => {
-    if (!btn.dataset.pcBtn) {
-      btn.addEventListener("click", handleSendClick, true);
-      btn.dataset.pcBtn = "1";
-    }
-  });
-
-  inputs.forEach((el) => {
-    if (!el.dataset.pcKey) {
-      el.addEventListener("keydown", async (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          const txt = el.value || el.innerText || "";
-          if (await isBadText(txt)) {
-            window.location.href = chrome.runtime.getURL("blocked.html");
-          } else {
-            const sendBtn = findSendButton(el);
-            if (sendBtn) {
-              sendBtn.click();
-            } else {
-              el.dispatchEvent(
-                new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true })
-              );
-            }
-          }
+          e.stopImmediatePropagation();
+          await logAndBlock(txt, el);
         }
-      });
-      el.dataset.pcKey = "1";
-    }
+      }
+    }, true); 
   });
 }
 
-new MutationObserver(attachListeners).observe(document.body, {
+new MutationObserver((mutations) => {
+  mutations.forEach((mutation) => {
+    if (mutation.addedNodes.length) {
+      attachListeners();
+    }
+  });
+}).observe(document.body, {
   childList: true,
   subtree: true,
 });
+
 attachListeners();

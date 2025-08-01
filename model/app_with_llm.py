@@ -15,7 +15,7 @@ from scipy.sparse import hstack
 # FastAPI Imports
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware # <--- 1. IMPORT THIS
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- LLM Setup ---
 print("--- Initializing LLM components... ---")
@@ -56,18 +56,15 @@ app = FastAPI(
     version="3.1.0"
 )
 
-# --- 2. ADD CORS MIDDLEWARE ---
-# This block will fix the "405 Method Not Allowed" error.
-origins = ["*"] # Allow all origins for simplicity.
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Allows all methods, including OPTIONS
-    allow_headers=["*"], # Allows all headers
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
-# --- END OF NEW BLOCK ---
 
 
 # --- Pydantic Model for Request Body ---
@@ -154,3 +151,8 @@ def read_root():
             "llm_model": "POST /check/llm/"
         }
     }
+    
+    
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
