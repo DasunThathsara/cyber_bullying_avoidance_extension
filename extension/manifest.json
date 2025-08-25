@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Parental Control Universal Blocker",
-  "version": "2.3",
+  "name": "Shieldy",
+  "version": "1.0",
   "description": "Prevents sending and searching for inappropriate text on all websites and the URL bar.",
   "permissions": [
     "storage",
@@ -27,5 +27,10 @@
       "resources": ["blocked.html", "popup.html", "popup.js"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "icons": {
+    "16": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  }
 }
