@@ -1,12 +1,6 @@
 console.log("Shieldy Background Script Loaded. Monitoring navigation.");
 
-/**
- * @param {string} text
- * @returns {Promise<string|false>} 
- */
-async function isBadText(text) {
-  if (!text || !text.trim()) return false;
-  
+function extractSearchTerm(url) {
   const searchPatterns = [
       /(?:\?|&)q=([^&]+)/,
       /(?:\?|&)query=([^&]+)/,
@@ -16,49 +10,47 @@ async function isBadText(text) {
       /(?:\?|&)term=([^&]+)/
   ];
 
-  let searchText = text;
   for (const pattern of searchPatterns) {
-      const match = text.match(pattern);
+      const match = url.match(pattern);
       if (match && match[1]) {
-          searchText = match[1].replace(/\+/g, ' ');
-          break;
+          return decodeURIComponent(match[1].replace(/\+/g, ' ')).trim();
       }
   }
 
-  const textsToTest = [...new Set([text, searchText])].filter(t => t.trim());
-
-  for (const txt of textsToTest) {
-      try {
-          const localRes = await fetch("http://127.0.0.1:8001/check/local/", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sentence: txt }),
-          });
-          const localData = await localRes.json();
-          if (localData.result === "BAD") return txt; // Return the bad text found
-      } catch (err) {
-          console.error("Local check API error:", err);
-      }
-      try {
-          const llmRes = await fetch("http://127.0.0.1:8001/check/llm/", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sentence: txt }),
-          });
-          const llmData = await llmRes.json();
-          if (llmData.result === "BAD") return txt; // Return the bad text found
-      } catch (err) {
-          console.error("LLM check API error:", err);
-      }
-  }
-  return false; 
+  return null;
 }
 
-/**
- * @param {number} tabId 
- * @param {string} blockedText
- */
-async function logAndBlock(tabId, blockedText) {
+async function isBadText(sentence) {
+  if (!sentence || !sentence.trim()) return false;
+  
+  try {
+      const localRes = await fetch("http://127.0.0.1:8001/check/local/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sentence: sentence }),
+      });
+      const localData = await localRes.json();
+      if (localData.result === "BAD") return true;
+  } catch (err) {
+      console.error("Local check API error:", err);
+  }
+  
+  try {
+      const llmRes = await fetch("http://127.0.0.1:8001/check/llm/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sentence: sentence }),
+      });
+      const llmData = await llmRes.json();
+      if (llmData.result === "BAD") return true;
+  } catch (err) {
+      console.error("LLM check API error:", err);
+  }
+
+  return false;
+}
+
+async function logAndBlock(tabId, blockedWord) {
   try {
     const data = await chrome.storage.local.get(['childUsername']);
     const childUsername = data.childUsername;
@@ -67,7 +59,7 @@ async function logAndBlock(tabId, blockedText) {
         await fetch("http://127.0.0.1:8000/searches/log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ search_query: blockedText, child_username: childUsername }),
+          body: JSON.stringify({ search_query: blockedWord, child_username: childUsername }),
         });
       } catch (logError) {
           console.error("Logging API error:", logError);
@@ -88,12 +80,13 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   }
 
   try {
-    const decodedUrl = decodeURIComponent(details.url);
-    const badTextFound = await isBadText(decodedUrl);
+    const searchTerm = extractSearchTerm(details.url);
 
-    if (badTextFound) {
-      console.log(`Blocking navigation to ${details.url} due to term: "${badTextFound}"`);
-      await logAndBlock(details.tabId, badTextFound);
+    if (searchTerm) {
+      if (await isBadText(searchTerm)) {
+        console.log(`Blocking navigation due to search term: "${searchTerm}"`);
+        await logAndBlock(details.tabId, searchTerm);
+      }
     }
   } catch (e) {
     console.error("Error processing navigation:", e);
