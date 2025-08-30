@@ -128,8 +128,9 @@ async function handleBadTextDetection(txt, el) {
   try {
     clearText(el);
     simulateDelete(el);
-    await clearLocalSessionDrafts();
-    await clearIndexedDbDrafts();
+    // The following two lines were too aggressive and have been removed.
+    // await clearLocalSessionDrafts();
+    // await clearIndexedDbDrafts();
     try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
     try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     if (el.form) try { el.form.reset(); } catch (e) {}
