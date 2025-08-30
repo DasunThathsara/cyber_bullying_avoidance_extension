@@ -1,4 +1,3 @@
-// content.js
 console.log("Parental Control Content Script v3.9 Loaded.");
 
 function debounce(fn, ms) {

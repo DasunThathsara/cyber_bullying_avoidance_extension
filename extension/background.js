@@ -1,114 +1,64 @@
-// background.js
-console.log("Parental Control Content Script v3.9 Loaded.");
+console.log("Shieldy Background Script Loaded. Monitoring navigation.");
 
-function debounce(fn, ms) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
-}
-
-function clearText(el) {
-  try {
-    if ('value' in el) el.value = '';
-    if (el.isContentEditable) {
-      el.innerHTML = '';
-      el.textContent = '';
-    }
-  } catch (e) {}
-}
-
-async function clearLocalSessionDrafts() {
-  try {
-    const substrs = ['draft', 'compose', 'pending', 'input', 'message', 'conversation', 'chat', 'draft_message', 'text'];
-    for (const k of Object.keys(localStorage || {})) {
-      try {
-        const lk = k.toLowerCase();
-        if (substrs.some(s => lk.includes(s))) localStorage.removeItem(k);
-      } catch (e) {}
-    }
-    for (const k of Object.keys(sessionStorage || {})) {
-      try {
-        const lk = k.toLowerCase();
-        if (substrs.some(s => lk.includes(s))) sessionStorage.removeItem(k);
-      } catch (e) {}
-    }
-  } catch (e) {}
-}
-
-async function clearIndexedDbDrafts() {
-  try {
-    if (!indexedDB || !indexedDB.databases) return;
-    const substrs = ['draft', 'compose', 'pending', 'input', 'message', 'conversation', 'chat', 'wa', 'whatsapp'];
-    const dbs = await indexedDB.databases();
-    for (const dbInfo of dbs || []) {
-      const name = dbInfo && dbInfo.name;
-      if (!name) continue;
-      try {
-        const openReq = indexedDB.open(name);
-        const db = await new Promise(res => {
-          openReq.onsuccess = () => res(openReq.result);
-          openReq.onerror = () => res(null);
-          openReq.onblocked = () => res(null);
-        });
-        if (!db) continue;
-        const stores = Array.from(db.objectStoreNames || []);
-        const toClear = stores.filter(s => substrs.some(sub => s.toLowerCase().includes(sub)));
-        if (toClear.length) {
-          const tx = db.transaction(toClear, 'readwrite');
-          for (const s of toClear) {
-            try { tx.objectStore(s).clear(); } catch (e) {}
-          }
-          await new Promise(res => { tx.oncomplete = res; tx.onerror = res; tx.onabort = res; });
-        }
-        try { db.close(); } catch (e) {}
-      } catch (e) {}
-    }
-  } catch (e) {}
-}
-
-function simulateDelete(el) {
-  try {
-    if (el.focus) el.focus();
-    try { document.execCommand('selectAll'); document.execCommand('delete'); } catch (e) {}
-    try {
-      const before = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward', data: null });
-      const inputEv = new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null });
-      el.dispatchEvent(before);
-      el.dispatchEvent(inputEv);
-    } catch (e) {}
-    try {
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Backspace', code: 'Backspace', bubbles: true }));
-    } catch (e) {}
-  } catch (e) {}
-}
-
+/**
+ * @param {string} text
+ * @returns {Promise<string|false>} 
+ */
 async function isBadText(text) {
-  if (!text.trim()) return false;
-  try {
-    const localRes = await fetch("http://127.0.0.1:8001/check/local/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sentence: text }),
-    });
-    const localData = await localRes.json();
-    if (localData.result === "BAD") return true;
-  } catch (err) {}
-  try {
-    const llmRes = await fetch("http://127.0.0.1:8001/check/llm/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sentence: text }),
-    });
-    const llmData = await llmRes.json();
-    if (llmData.result === "BAD") return true;
-  } catch (err) {}
-  return false;
+  if (!text || !text.trim()) return false;
+  
+  const searchPatterns = [
+      /(?:\?|&)q=([^&]+)/,
+      /(?:\?|&)query=([^&]+)/,
+      /(?:\?|&)search_query=([^&]+)/,
+      /(?:\?|&)search=([^&]+)/,
+      /(?:\?|&)keyword=([^&]+)/,
+      /(?:\?|&)term=([^&]+)/
+  ];
+
+  let searchText = text;
+  for (const pattern of searchPatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+          searchText = match[1].replace(/\+/g, ' ');
+          break;
+      }
+  }
+
+  const textsToTest = [...new Set([text, searchText])].filter(t => t.trim());
+
+  for (const txt of textsToTest) {
+      try {
+          const localRes = await fetch("http://127.0.0.1:8001/check/local/", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sentence: txt }),
+          });
+          const localData = await localRes.json();
+          if (localData.result === "BAD") return txt; // Return the bad text found
+      } catch (err) {
+          console.error("Local check API error:", err);
+      }
+      try {
+          const llmRes = await fetch("http://127.0.0.1:8001/check/llm/", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sentence: txt }),
+          });
+          const llmData = await llmRes.json();
+          if (llmData.result === "BAD") return txt; // Return the bad text found
+      } catch (err) {
+          console.error("LLM check API error:", err);
+      }
+  }
+  return false; 
 }
 
-async function logAndBlock(blockedText) {
+/**
+ * @param {number} tabId 
+ * @param {string} blockedText
+ */
+async function logAndBlock(tabId, blockedText) {
   try {
     const data = await chrome.storage.local.get(['childUsername']);
     const childUsername = data.childUsername;
@@ -119,59 +69,35 @@ async function logAndBlock(blockedText) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ search_query: blockedText, child_username: childUsername }),
         });
-      } catch (logError) {}
+      } catch (logError) {
+          console.error("Logging API error:", logError);
+      }
     }
-  } catch (e) {}
-  window.location.href = chrome.runtime.getURL("blocked.html");
+  } catch (e) {
+      console.error("Error getting child username for logging:", e);
+  }
+
+  chrome.tabs.update(tabId, {
+    url: chrome.runtime.getURL("blocked.html")
+  });
 }
 
-async function handleBadTextDetection(txt, el) {
+chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
+  if (details.frameId !== 0) {
+    return;
+  }
+
   try {
-    clearText(el);
-    simulateDelete(el);
-    await clearLocalSessionDrafts();
-    await clearIndexedDbDrafts();
-    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
-    try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
-    if (el.form) try { el.form.reset(); } catch (e) {}
-    await new Promise(r => setTimeout(r, 200));
-  } catch (e) {}
-  await logAndBlock(txt);
-}
+    const decodedUrl = decodeURIComponent(details.url);
+    const badTextFound = await isBadText(decodedUrl);
 
-function attachListeners() {
-  const inputs = document.querySelectorAll('textarea, input[type="text"], input[type="search"], [contenteditable="true"]');
-  inputs.forEach((el) => {
-    try {
-      if (el.dataset.pcAttached) return;
-      el.dataset.pcAttached = "true";
-      const debouncedCheck = debounce(async () => {
-        const txt = el.value || el.innerText || "";
-        if (txt.trim() && await isBadText(txt)) {
-          await handleBadTextDetection(txt, el);
-        }
-      }, 400);
-      el.addEventListener("input", debouncedCheck);
-      el.addEventListener("keydown", async (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          const txt = el.value || el.innerText || "";
-          if (txt.trim() && await isBadText(txt)) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            await handleBadTextDetection(txt, el);
-          }
-        }
-      }, true);
-    } catch (e) {}
-  });
-}
-
-new MutationObserver((mutations) => {
-  mutations.forEach((mutation) => {
-    if (mutation.addedNodes.length) {
-      attachListeners();
+    if (badTextFound) {
+      console.log(`Blocking navigation to ${details.url} due to term: "${badTextFound}"`);
+      await logAndBlock(details.tabId, badTextFound);
     }
-  });
-}).observe(document.body, { childList: true, subtree: true });
-
-attachListeners();
+  } catch (e) {
+    console.error("Error processing navigation:", e);
+  }
+}, {
+  url: [{ schemes: ["http", "https"] }]
+});
