@@ -13,7 +13,7 @@
         h3 {
             color: #1c1e21;
         }
-        #login-view, #status-view { 
+        #login-view, #status-view, #logout-confirm-view { 
             display: none; 
         }
         input { 
@@ -32,24 +32,27 @@
             color: white;
             font-weight: bold;
             cursor: pointer;
+            margin-top: 4px;
         }
         button:hover {
             background-color: #166fe5;
         }
-        #logout-btn {
+        #logout-btn, #cancel-logout-btn {
             background-color: #e4e6eb;
             color: #4b4f56;
         }
-        #logout-btn:hover {
+        #logout-btn:hover, #cancel-logout-btn:hover {
             background-color: #dcdde1;
         }
         #status-message { 
             font-weight: bold;
             color: #1c1e21;
+            margin-bottom: 15px;
         }
-        #login-error {
+        #login-error, #logout-error {
             color: #fa3e3e;
             font-size: 12px;
+            min-height: 15px;
         }
     </style>
 </head>
@@ -63,8 +66,17 @@
     </div>
 
     <div id="status-view">
-        <p id="status-message"></p>
-        <button id="logout-btn">Logout</button>
+        <div id="status-main-view">
+            <p id="status-message"></p>
+            <button id="logout-btn">Logout</button>
+        </div>
+        <div id="logout-confirm-view">
+            <p>Enter password to log out</p>
+            <input type="password" id="logout-password" placeholder="Password">
+            <button id="confirm-logout-btn">Confirm Logout</button>
+            <button id="cancel-logout-btn">Cancel</button>
+            <p id="logout-error"></p>
+        </div>
     </div>
 
     <script src="popup.js"></script>
