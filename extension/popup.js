@@ -47,18 +47,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    loginBtn.addEventListener('click', () => {
+    loginBtn.addEventListener('click', async () => {
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
 
-        if (username && password) {
-            loginError.textContent = '';
-            // Store both username and password
-            chrome.storage.local.set({ childUsername: username, childPassword: password }, () => {
-                showStatusView(username);
-            });
-        } else {
+        if (!username || !password) {
             loginError.textContent = 'Username and password are required.';
+            return;
+        }
+
+        loginError.textContent = '';
+        
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+
+        try {
+            const response = await fetch("http://127.0.0.1:8000/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: formData,
+            });
+
+            if (response.ok) {
+                // Login successful
+                const data = await response.json();
+                if (data.access_token) {
+                    chrome.storage.local.set({ childUsername: username, childPassword: password }, () => {
+                        showStatusView(username);
+                    });
+                } else {
+                     loginError.textContent = "Login failed: No access token received.";
+                }
+            } else {
+                // Login failed (e.g., 401 Unauthorized)
+                loginError.textContent = "Invalid username or password.";
+            }
+        } catch (error) {
+            // Network or other errors
+            console.error("Login request failed:", error);
+            loginError.textContent = "Could not connect to the server.";
         }
     });
 
