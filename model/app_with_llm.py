@@ -96,6 +96,7 @@ def predict_llm(sentence: str):
     You are a content moderation expert. Your task is to classify the given text as 'BAD' or 'NOT BAD'.
     'BAD' means the text is inappropriate, offensive, hateful, or contains profanity. Actually I use this model to detect cyber bullying and I creating a parental control extension. Therefore, 'BAD' means the text is not appropriate for children. Sometimes user may pass a message like this 'I kill you' or 'I hate you'. These are not appropriate for children. Therefore give just bad or notbad thing. Don't include any additional information or context.
     'NOT BAD' means the text is appropriate and safe.
+    "your " is not a BAD word.
     You must also provide a confidence score as a percentage for your classification.
     Your final output must be a single, valid JSON object with two keys: "result" and "confidence".
     For example: {"result": "BAD", "confidence": "98.50%"}
@@ -130,7 +131,10 @@ def check_sentence_local(sentence_input: SentenceInput):
         raise HTTPException(status_code=503, detail="Local model is not available.")
     if not sentence_input.sentence.strip():
         raise HTTPException(status_code=400, detail="Sentence cannot be empty.")
-    return predict_local_model(sentence_input.sentence)
+
+    result = predict_local_model(sentence_input.sentence)
+    print("Local Model Result:", result, sentence_input.sentence)
+    return result
 
 @app.post("/check/llm/")
 def check_sentence_llm(sentence_input: SentenceInput):
@@ -138,7 +142,10 @@ def check_sentence_llm(sentence_input: SentenceInput):
         raise HTTPException(status_code=503, detail="LLM service is not available. Check API configuration.")
     if not sentence_input.sentence.strip():
         raise HTTPException(status_code=400, detail="Sentence cannot be empty.")
-    return predict_llm(sentence_input.sentence)
+
+    result = predict_llm(sentence_input.sentence)
+    print("LLM Model Result:", result, sentence_input.sentence)
+    return result
 
 
 # --- Root Endpoint ---
