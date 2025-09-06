@@ -72,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                // Login successful
                 const data = await response.json();
                 if (data.access_token) {
                     chrome.storage.local.set({ childUsername: username, childPassword: password }, () => {
@@ -82,11 +81,9 @@ document.addEventListener('DOMContentLoaded', () => {
                      loginError.textContent = "Login failed: No access token received.";
                 }
             } else {
-                // Login failed (e.g., 401 Unauthorized)
                 loginError.textContent = "Invalid username or password.";
             }
         } catch (error) {
-            // Network or other errors
             console.error("Login request failed:", error);
             loginError.textContent = "Could not connect to the server.";
         }
@@ -104,21 +101,44 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutError.textContent = '';
     });
 
-    confirmLogoutBtn.addEventListener('click', () => {
-        const enteredPassword = logoutPasswordInput.value;
-        if (!enteredPassword) {
-            logoutError.textContent = 'Password is required.';
+    confirmLogoutBtn.addEventListener('click', async () => {
+        const parentPassword = logoutPasswordInput.value;
+        if (!parentPassword) {
+            logoutError.textContent = 'Parent password is required.';
             return;
         }
 
-        chrome.storage.local.get(['childPassword'], (result) => {
-            if (result.childPassword && result.childPassword === enteredPassword) {
-                chrome.storage.local.remove(['childUsername', 'childPassword'], () => {
-                    showLoginView();
+        logoutError.textContent = '';
+
+        chrome.storage.local.get(['childUsername'], async (result) => {
+            if (!result.childUsername) {
+                showLoginView();
+                return;
+            }
+
+            try {
+                const response = await fetch("http://127.0.0.1:8000/users/verify-parent-for-logout", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        child_username: result.childUsername,
+                        parent_password: parentPassword
+                    }),
                 });
-            } else {
-                logoutError.textContent = 'Incorrect password. Please try again.';
-                logoutPasswordInput.value = '';
+
+                if (response.ok) {
+                    chrome.storage.local.remove(['childUsername', 'childPassword'], () => {
+                        showLoginView();
+                    });
+                } else {
+                    logoutError.textContent = 'Incorrect parent password. Please try again.';
+                    logoutPasswordInput.value = '';
+                }
+            } catch (error) {
+                console.error("Logout request failed:", error);
+                logoutError.textContent = "Could not connect to the server.";
             }
         });
     });
